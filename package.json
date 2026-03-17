@@ -1,0 +1,24 @@
+{
+	"name": "telecord-ingest-discord",
+	"version": "1.0.0",
+	"private": true,
+	"main": "src/index.ts",
+	"scripts": {
+		"start": "bun .",
+		"dev": "bun --watch .",
+		"lint": "oxlint --config .oxlintrc.json --fix-dangerously src",
+		"fmt": "oxfmt --config .oxfmtrc.json src",
+		"typecheck": "tsgo --noEmit"
+	},
+	"dependencies": {
+		"discord.js": "^14.25.1"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.2.9",
+		"@typescript/native-preview": "^7.0.0-dev.20260317.1",
+		"eslint-plugin-perfectionist": "^5.7.0",
+		"oxfmt": "^0.41.0",
+		"oxlint": "^1.56.0",
+		"oxlint-tsgolint": "^0.17.0"
+	}
+}
