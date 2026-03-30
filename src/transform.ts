@@ -79,6 +79,7 @@ type IngestPayload = {
 	mention_everyone: boolean;
 	stickers?: IngestStickerItem[];
 	message_reference?: IngestMessageReference | null;
+	webhook_id?: string | null;
 };
 
 type IngestReaction = {
@@ -208,6 +209,7 @@ export function transformMessage(message: Message): IngestPayload {
 		mention_everyone: message.mentions.everyone,
 		stickers,
 		message_reference: messageReference,
+		webhook_id: message.webhookId ?? null,
 	};
 }
 
