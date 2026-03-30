@@ -157,7 +157,7 @@ export function transformMessage(message: Message): IngestPayload {
 				emoji: {
 					id: r.emoji.id,
 					name: r.emoji.name,
-					animated: r.emoji.animated ?? undefined,
+					animated: r.emoji.animated ?? false,
 				},
 			}))
 		: [];
@@ -244,7 +244,7 @@ export function transformReactionUpdate(
 			emoji: {
 				id: r.emoji.id,
 				name: r.emoji.name,
-				animated: r.emoji.animated ?? undefined,
+				animated: r.emoji.animated ?? false,
 			},
 		})),
 	};
