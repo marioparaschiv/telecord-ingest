@@ -1,6 +1,11 @@
-import { Client, GatewayIntentBits, type Message, type PartialMessage, Partials } from 'discord.js';
+import {
+	Client,
+	GatewayDispatchEvents,
+	type GatewayDispatchPayload,
+	GatewayIntentBits,
+} from 'discord.js';
 
-import { transformDelete, transformMessage, transformReactionUpdate } from '~/transform';
+import type { IngestClient } from '~/modes';
 import { createClient } from '~/modes';
 import Logger from '~/logger';
 import env from '~/env';
@@ -8,6 +13,52 @@ import env from '~/env';
 const logger = new Logger('Discord', 'Ingest');
 
 const ingest = await createClient(env.MODE);
+
+type Event = GatewayDispatchPayload['t'];
+
+type IngestMethod = keyof Pick<
+	IngestClient,
+	'create' | 'update' | 'remove' | 'updateReactions' | 'clearReactions'
+>;
+
+type Route = {
+	send: IngestMethod;
+	label: string;
+};
+
+const routes: Partial<Record<Event, Route>> = {
+	[GatewayDispatchEvents.MessageCreate]: { send: 'create', label: 'message created' },
+	[GatewayDispatchEvents.MessageUpdate]: { send: 'update', label: 'message edited' },
+	[GatewayDispatchEvents.MessageDelete]: { send: 'remove', label: 'message deleted' },
+	[GatewayDispatchEvents.MessageReactionAdd]: {
+		send: 'updateReactions',
+		label: 'reaction added',
+	},
+	[GatewayDispatchEvents.MessageReactionRemove]: {
+		send: 'updateReactions',
+		label: 'reaction removed',
+	},
+	[GatewayDispatchEvents.MessageReactionRemoveEmoji]: {
+		send: 'updateReactions',
+		label: 'reaction cleared',
+	},
+	[GatewayDispatchEvents.MessageReactionRemoveAll]: {
+		send: 'clearReactions',
+		label: 'reactions cleared',
+	},
+};
+
+function getMessageId(data: GatewayDispatchPayload['d']): string {
+	if ('id' in data && data.id) {
+		return data.id;
+	}
+
+	if ('message_id' in data && data.message_id) {
+		return data.message_id;
+	}
+
+		return 'unknown';
+}
 
 const client = new Client({
 	intents: [
@@ -17,79 +68,22 @@ const client = new Client({
 		GatewayIntentBits.DirectMessages,
 		GatewayIntentBits.GuildMessageReactions,
 	],
-	partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
 
 client.once('clientReady', (c) => {
 	logger.success(`Logged in as ${c.user.tag}`);
 });
 
-client.on('messageCreate', async (message) => {
-	try {
-		const payload = transformMessage(message);
-		if (await ingest.create(payload))
-			logger.info(`Sent ingest for new message (${message.id})`);
-	} catch (error) {
-		logger.error(`Failed to process messageCreate (${message.id}):`, error);
-	}
-});
+client.on('raw', async (packet: GatewayDispatchPayload) => {
+	const route = routes[packet.t];
+	if (!route) return;
 
-client.on('messageUpdate', async (_old, updated) => {
 	try {
-		if (updated.partial) {
-			const fetched = await updated.fetch().catch(() => null);
-			if (!fetched) return;
-			updated = fetched;
+		if (await ingest[route.send](packet.d)) {
+			logger.info(`${route.label} (${getMessageId(packet.d)})`);
 		}
-
-		const payload = transformMessage(updated);
-		if (await ingest.update(payload))
-			logger.info(`Sent ingest for message update (${updated.id})`);
 	} catch (error) {
-		logger.error(`Failed to process messageUpdate (${updated.id}):`, error);
-	}
-});
-
-client.on('messageDelete', async (message) => {
-	try {
-		const payload = transformDelete(message);
-		if (await ingest.remove(payload))
-			logger.info(`Sent ingest for message delete (${message.id})`);
-	} catch (error) {
-		logger.error(`Failed to process messageDelete (${message.id}):`, error);
-	}
-});
-
-async function handleReactionChange(reaction: { message: Message | PartialMessage }) {
-	try {
-		let message: Message;
-		if (reaction.message.partial) {
-			const fetched = await reaction.message.fetch().catch(() => null);
-			if (!fetched) return;
-			message = fetched;
-		} else {
-			message = reaction.message;
-		}
-
-		const payload = transformReactionUpdate(message, message.reactions.cache);
-		if (await ingest.updateReactions(payload))
-			logger.info(`Sent ingest for reaction update (${message.id})`);
-	} catch (error) {
-		logger.error(`Failed to process reaction change (${reaction.message.id}):`, error);
-	}
-}
-
-client.on('messageReactionAdd', (reaction) => handleReactionChange(reaction));
-client.on('messageReactionRemove', (reaction) => handleReactionChange(reaction));
-client.on('messageReactionRemoveEmoji', (reaction) => handleReactionChange(reaction));
-
-client.on('messageReactionRemoveAll', async (message) => {
-	try {
-		const payload = transformDelete(message);
-		if (await ingest.clearReactions(payload))
-			logger.info(`Sent ingest for remove all reactions (${message.id})`);
-	} catch (error) {
-		logger.error(`Failed to process messageReactionRemoveAll (${message.id}):`, error);
+		logger.error(`Failed to process ${packet.t}:`, error);
 	}
 });
 
